@@ -1,0 +1,33 @@
+# Logs
+logs/
+*.log
+
+# Let's Encrypt certificates (will be in Docker volume)
+letsencrypt/
+
+# Webroot temporary files
+webroot/*
+!webroot/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Docker override files
+docker-compose.override.yml
+
+# Environment files with secrets
+.env.local
+.env.production

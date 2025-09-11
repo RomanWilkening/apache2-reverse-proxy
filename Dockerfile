@@ -21,7 +21,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Apache Module aktivieren
 RUN a2enmod proxy \
     && a2enmod proxy_http \
-    && a2enmod proxy_https \
     && a2enmod ssl \
     && a2enmod rewrite \
     && a2enmod headers \

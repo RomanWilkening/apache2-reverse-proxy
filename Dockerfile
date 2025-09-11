@@ -37,6 +37,15 @@ RUN mkdir -p /etc/apache2/sites-available \
 # Standard Apache Konfiguration entfernen
 RUN rm -f /etc/apache2/sites-enabled/000-default.conf
 
+# Defaults der Apache-Konfiguration für Seed-on-empty sichern
+RUN mkdir -p /opt/defaults/apache2 \
+    && cp -a /etc/apache2/sites-available /opt/defaults/apache2/ \
+    && cp -a /etc/apache2/sites-enabled /opt/defaults/apache2/ \
+    && cp -a /etc/apache2/conf-available /opt/defaults/apache2/ \
+    && cp -a /etc/apache2/conf-enabled /opt/defaults/apache2/ \
+    && cp -a /etc/apache2/mods-available /opt/defaults/apache2/ \
+    && cp -a /etc/apache2/mods-enabled /opt/defaults/apache2/
+
 # Cron für Let's Encrypt Auto-Renewal
 RUN echo "0 0,12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful'" > /etc/cron.d/certbot-renew \
     && chmod 0644 /etc/cron.d/certbot-renew

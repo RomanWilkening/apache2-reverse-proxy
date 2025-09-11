@@ -11,12 +11,12 @@ services:
       - "${HTTPS_PORT:-443}:443"
     volumes:
       # Apache2 Konfiguration
-      - ./config/sites-available:/etc/apache2/sites-available:ro
-      - ./config/sites-enabled:/etc/apache2/sites-enabled:ro
-      - ./config/conf-available:/etc/apache2/conf-available:ro
-      - ./config/conf-enabled:/etc/apache2/conf-enabled:ro
-      - ./config/mods-available:/etc/apache2/mods-available:ro
-      - ./config/mods-enabled:/etc/apache2/mods-enabled:ro
+      - ./config/sites-available:/etc/apache2/sites-available
+      - ./config/sites-enabled:/etc/apache2/sites-enabled
+      - ./config/conf-available:/etc/apache2/conf-available
+      - ./config/conf-enabled:/etc/apache2/conf-enabled
+      - ./config/mods-available:/etc/apache2/mods-available
+      - ./config/mods-enabled:/etc/apache2/mods-enabled
       
       # Let's Encrypt Zertifikate (persistent)
       - letsencrypt:/etc/letsencrypt

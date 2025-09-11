@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     tzdata \
     cron \
+    nano \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

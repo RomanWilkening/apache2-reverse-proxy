@@ -28,8 +28,16 @@ services:
       - ./webroot:/var/www/html
     environment:
       - TZ=${TZ:-Europe/Berlin}
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: 0
+      net.ipv6.conf.default.disable_ipv6: 0
+      net.ipv6.conf.all.accept_ra: 2
+      net.ipv6.conf.default.accept_ra: 2
+      net.ipv6.conf.all.autoconf: 1
+      net.ipv6.conf.default.autoconf: 1
     networks:
       - proxy-network
+      - lan-ipv6
 
 volumes:
   letsencrypt:
@@ -39,3 +47,8 @@ networks:
   proxy-network:
     driver: bridge
     name: ${NETWORK_NAME:-apache-proxy-network}
+  lan-ipv6:
+    driver: macvlan
+    name: ${IPV6_LAN_NETWORK_NAME:-apache-lan-ipv6}
+    driver_opts:
+      parent: ${PARENT_IFACE:-eth0}

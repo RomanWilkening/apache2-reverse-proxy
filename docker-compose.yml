@@ -4,7 +4,7 @@ services:
   apache-reverse-proxy:
     build: .
     image: apache-reverse-proxy:latest
-    container_name: ${CONTAINER_NAME:-apache-reverse-proxy}
+    container_name: apache-reverse-proxy
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-80}:80"
@@ -28,20 +28,8 @@ services:
       - ./webroot:/var/www/html
     environment:
       - TZ=${TZ:-Europe/Berlin}
-      - ENABLE_DHCPV6=${ENABLE_DHCPV6:-true}
-      - DHCPV6_IFACE=${DHCPV6_IFACE:-}
-    cap_add:
-      - NET_ADMIN
-    sysctls:
-      net.ipv6.conf.all.disable_ipv6: 0
-      net.ipv6.conf.default.disable_ipv6: 0
-      net.ipv6.conf.all.accept_ra: 2
-      net.ipv6.conf.default.accept_ra: 2
-      net.ipv6.conf.all.autoconf: 1
-      net.ipv6.conf.default.autoconf: 1
     networks:
       - proxy-network
-      - lan-ipv6
 
 volumes:
   letsencrypt:
@@ -50,7 +38,3 @@ volumes:
 networks:
   proxy-network:
     driver: bridge
-    name: ${NETWORK_NAME:-apache-proxy-network}
-  lan-ipv6:
-    external: true
-    name: ${IPV6_LAN_NETWORK_NAME:-apache-lan-ipv6}

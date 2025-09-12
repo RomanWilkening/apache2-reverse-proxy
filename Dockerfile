@@ -1,5 +1,5 @@
-# Basis-Image: Ubuntu 22.04 LTS (minimal)
-FROM ubuntu:22.04
+# Basis-Image: Ubuntu 24.04 LTS (minimal)
+FROM ubuntu:24.04
 
 # Environment Variables
 ENV DEBIAN_FRONTEND=noninteractive

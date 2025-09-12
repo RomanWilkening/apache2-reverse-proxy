@@ -64,20 +64,6 @@ apache2ctl configtest
 echo "Starting cron for Let's Encrypt auto-renewal..."
 service cron start
 
-# Optionally start DHCPv6 client to obtain a global IPv6 address
-if [ "${ENABLE_DHCPV6:-false}" = "true" ]; then
-    echo "ENABLE_DHCPV6 is enabled. Starting DHCPv6 client..."
-    ifaces_to_configure="${DHCPV6_IFACE:-}"
-    if [ -z "$ifaces_to_configure" ]; then
-        # Fallback: try all non-loopback interfaces
-        ifaces_to_configure=$(ls /sys/class/net | grep -v '^lo$' || true)
-    fi
-    for iface in $ifaces_to_configure; do
-        echo "Requesting DHCPv6 lease on interface $iface ..."
-        dhclient -6 -nw -v "$iface" || true
-    done
-fi
-
 # ServerName setzen falls nicht vorhanden
 if ! grep -q "^ServerName" /etc/apache2/apache2.conf; then
     echo "ServerName localhost" >> /etc/apache2/apache2.conf

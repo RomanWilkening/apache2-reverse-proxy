@@ -110,81 +110,92 @@ resolve_aaaa_records() {
     
 
 update_custom() {
-    # CUSTOM_URL or CUSTOM_URLS support placeholders {IPV4} and {IPV6}
-    local urls="${CUSTOM_URLS:-}"
-    if [ -z "$urls" ] && [ -n "${CUSTOM_URL:-}" ]; then
-        urls="$CUSTOM_URL"
-    fi
-    if [ -z "$urls" ]; then
-        log "Custom: CUSTOM_URL(S) fehlt."
+    # Erwartet eine einzelne URL-Vorlage (CUSTOM_URL) mit Platzhaltern
+    # {DOMAIN}, {PASSWORT}, {IPV4}, {IPV6}
+    local template_url="${CUSTOM_URL:-}"
+    if [ -z "$template_url" ]; then
+        log "Custom: CUSTOM_URL fehlt."
         return 1
     fi
+
+    local domains_raw="${CUSTOM_DOMAINS:-}"
+    if [ -z "$domains_raw" ]; then
+        log "Custom: CUSTOM_DOMAINS fehlt."
+        return 1
+    fi
+
     local method="${CUSTOM_METHOD:-GET}"
+    local password="${CUSTOM_PASSWORT:-${CUSTOM_PASSWORD:-}}"
+
     local overall_rc=0
+
+    # Nur die Domainliste wird an Kommas getrennt. Die URL darf Kommas enthalten.
     local IFS=','
-    local -a url_list
-    local -a host_list
-    read -ra url_list <<< "$urls"
-    read -ra host_list <<< "${CUSTOM_HOSTS:-}"
-    local i
-    for i in "${!url_list[@]}"; do
-        local tmpl
-        tmpl=$(echo "${url_list[$i]}" | xargs)
-        [ -z "$tmpl" ] && continue
-        local target_host=""
-        if [ ${#host_list[@]} -gt $i ] && [ -n "${host_list[$i]:-}" ]; then
-            target_host=$(echo "${host_list[$i]}" | xargs)
-        else
-            target_host=$(extract_host_from_url "$tmpl")
-        fi
+    local -a domain_list
+    read -ra domain_list <<< "$domains_raw"
+
+    local domain
+    for domain in "${domain_list[@]}"; do
+        domain=$(echo "$domain" | xargs)
+        [ -z "$domain" ] && continue
 
         local do_update=false
         local checked_any=false
-        if [ "$DISABLE_IPV4" != "true" ] && [ -n "$IPV4" ] && [ -n "$target_host" ]; then
+
+        if [ "$DISABLE_IPV4" != "true" ] && [ -n "$IPV4" ]; then
             checked_any=true
             local current_a
-            current_a=$(resolve_a_records "$target_host" || true)
+            current_a=$(resolve_a_records "$domain" || true)
             if ! echo "$current_a" | grep -qx "$IPV4" 2>/dev/null; then
                 do_update=true
             else
-                log "Custom: Kein A-Update nötig für ${target_host} (bestehendes A == $IPV4)."
-            fi
-        fi
-        if [ "$DISABLE_IPV6" != "true" ] && [ -n "$IPV6" ] && [ -n "$target_host" ]; then
-            checked_any=true
-            local current_aaaa
-            current_aaaa=$(resolve_aaaa_records "$target_host" || true)
-            if ! echo "$current_aaaa" | grep -qx "$IPV6" 2>/dev/null; then
-                do_update=true
-            else
-                log "Custom: Kein AAAA-Update nötig für ${target_host} (bestehendes AAAA == $IPV6)."
+                log "Custom: Kein A-Update nötig für ${domain} (bestehendes A == $IPV4)."
             fi
         fi
 
-        if [ -z "$target_host" ]; then
-            log "Custom: Zielhost nicht ermittelbar aus URL. Führe Update vorsorglich aus."
-            do_update=true
-        elif [ "$checked_any" = false ]; then
-            log "Custom: Keine öffentliche IP ermittelt oder Updates deaktiviert. Überspringe ${target_host}."
+        if [ "$DISABLE_IPV6" != "true" ] && [ -n "$IPV6" ]; then
+            checked_any=true
+            local current_aaaa
+            current_aaaa=$(resolve_aaaa_records "$domain" || true)
+            if ! echo "$current_aaaa" | grep -qx "$IPV6" 2>/dev/null; then
+                do_update=true
+            else
+                log "Custom: Kein AAAA-Update nötig für ${domain} (bestehendes AAAA == $IPV6)."
+            fi
+        fi
+
+        if [ "$checked_any" = false ]; then
+            log "Custom: Keine öffentliche IP ermittelt oder Updates deaktiviert. Überspringe ${domain}."
             continue
         fi
 
         if [ "$do_update" = true ]; then
-            local url="$tmpl"
+            local url="$template_url"
+            # Platzhalter ersetzen (Groß-/Kleinschreibung unterstützen)
             url=${url//\{IPV4\}/$IPV4}
+            url=${url//\{ipv4\}/$IPV4}
             url=${url//\{IPV6\}/$IPV6}
+            url=${url//\{ipv6\}/$IPV6}
+            url=${url//\{DOMAIN\}/$domain}
+            url=${url//\{domain\}/$domain}
+            url=${url//\{PASSWORT\}/$password}
+            url=${url//\{passwort\}/$password}
+            url=${url//\{PASSWORD\}/$password}
+            url=${url//\{password\}/$password}
+
             local resp
             if [ "$method" = "POST" ]; then
                 resp=$(curl -fsS -X POST "$url" || true)
             else
                 resp=$(curl -fsS "$url" || true)
             fi
-            log "Custom: Update ausgeführt für ${target_host:-unbekannt}. Antwort: ${resp}"
+            log "Custom: Update ausgeführt für ${domain}. Antwort: ${resp}"
             [ -z "$resp" ] && overall_rc=1
         else
-            log "Custom: Überspringe Update für ${target_host} (keine Änderung erkannt)."
+            log "Custom: Überspringe Update für ${domain} (keine Änderung erkannt)."
         fi
     done
+
     return $overall_rc
 }
 

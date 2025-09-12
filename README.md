@@ -181,10 +181,18 @@ CLOUDFLARE_PROXIED=false
 CLOUDFLARE_TTL=120
 ```
 
-- Custom (beliebige URL mit Platzhaltern `{IPV4}` / `{IPV6}`):
+- Custom (eine einzige URL mit Platzhaltern `{DOMAIN}`, `{PASSWORT}`, `{IPV4}`, `{IPV6}`):
 ```bash
 PROVIDER=custom
-CUSTOM_URL=https://dyn.example.com/update?host=app.example.com&ip={IPV4}&ipv6={IPV6}
+# Die URL darf Kommata enthalten
+CUSTOM_URL=https://dyn.example.com/update?d={DOMAIN},ip4={IPV4},ip6={IPV6},pw={PASSWORT}
+
+# Zu aktualisierende Domains (kommagetrennt)
+CUSTOM_DOMAINS=app.example.com, www.example.com
+
+# Passwort für den Dienst
+CUSTOM_PASSWORT=mein-super-passwort
+
 # Optional
 CUSTOM_METHOD=GET
 ```

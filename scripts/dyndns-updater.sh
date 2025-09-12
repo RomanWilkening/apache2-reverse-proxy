@@ -63,6 +63,50 @@ IPV4=""; IPV6=""
 discover_ipv4 || log "Warnung: Konnte externe IPv4 nicht ermitteln."
 discover_ipv6 || log "Warnung: Konnte externe IPv6 nicht ermitteln."
 
+urldecode() {
+    local data="$1"
+    data="${data//+/ }"
+    printf '%b' "${data//%/\\x}"
+}
+
+extract_host_from_url() {
+    # Heuristik: aus Query-Parametern einen Hostnamen lesen
+    # Unterstützte Param-Namen: host, hostname, name, domain, record, fqdn
+    local url="$1"
+    case "$url" in
+        *\?*) : ;;
+        *) echo ""; return 0 ;;
+    esac
+    local query
+    query="${url#*?}"
+    query="${query%%#*}"
+    local pair key val
+    local IFS='&'
+    for pair in $query; do
+        key="${pair%%=*}"
+        val="${pair#*=}"
+        key=$(printf '%s' "$key" | tr 'A-Z' 'a-z')
+        val=$(urldecode "$val")
+        case "$key" in
+            host|hostname|name|domain|record|fqdn)
+                echo "$val"
+                return 0
+                ;;
+        esac
+    done
+    echo ""
+}
+
+resolve_a_records() {
+    local host="$1"
+    getent ahostsv4 "$host" | awk '{print $1}' | sort -u
+}
+
+resolve_aaaa_records() {
+    local host="$1"
+    getent ahostsv6 "$host" | awk '{print $1}' | sort -u
+}
+
     
 
 update_custom() {
@@ -76,23 +120,70 @@ update_custom() {
         return 1
     fi
     local method="${CUSTOM_METHOD:-GET}"
-    local IFS=','
     local overall_rc=0
-    for raw in $urls; do
+    local IFS=','
+    local -a url_list
+    local -a host_list
+    read -ra url_list <<< "$urls"
+    read -ra host_list <<< "${CUSTOM_HOSTS:-}"
+    local i
+    for i in "${!url_list[@]}"; do
         local tmpl
-        tmpl=$(echo "$raw" | xargs)
+        tmpl=$(echo "${url_list[$i]}" | xargs)
         [ -z "$tmpl" ] && continue
-        local url="$tmpl"
-        url=${url//\{IPV4\}/$IPV4}
-        url=${url//\{IPV6\}/$IPV6}
-        local resp
-        if [ "$method" = "POST" ]; then
-            resp=$(curl -fsS -X POST "$url" || true)
+        local target_host=""
+        if [ ${#host_list[@]} -gt $i ] && [ -n "${host_list[$i]:-}" ]; then
+            target_host=$(echo "${host_list[$i]}" | xargs)
         else
-            resp=$(curl -fsS "$url" || true)
+            target_host=$(extract_host_from_url "$tmpl")
         fi
-        log "Custom: Antwort für ${tmpl}: ${resp}"
-        [ -z "$resp" ] && overall_rc=1
+
+        local do_update=false
+        local checked_any=false
+        if [ "$DISABLE_IPV4" != "true" ] && [ -n "$IPV4" ] && [ -n "$target_host" ]; then
+            checked_any=true
+            local current_a
+            current_a=$(resolve_a_records "$target_host" || true)
+            if ! echo "$current_a" | grep -qx "$IPV4" 2>/dev/null; then
+                do_update=true
+            else
+                log "Custom: Kein A-Update nötig für ${target_host} (bestehendes A == $IPV4)."
+            fi
+        fi
+        if [ "$DISABLE_IPV6" != "true" ] && [ -n "$IPV6" ] && [ -n "$target_host" ]; then
+            checked_any=true
+            local current_aaaa
+            current_aaaa=$(resolve_aaaa_records "$target_host" || true)
+            if ! echo "$current_aaaa" | grep -qx "$IPV6" 2>/dev/null; then
+                do_update=true
+            else
+                log "Custom: Kein AAAA-Update nötig für ${target_host} (bestehendes AAAA == $IPV6)."
+            fi
+        fi
+
+        if [ -z "$target_host" ]; then
+            log "Custom: Zielhost nicht ermittelbar aus URL. Führe Update vorsorglich aus."
+            do_update=true
+        elif [ "$checked_any" = false ]; then
+            log "Custom: Keine öffentliche IP ermittelt oder Updates deaktiviert. Überspringe ${target_host}."
+            continue
+        fi
+
+        if [ "$do_update" = true ]; then
+            local url="$tmpl"
+            url=${url//\{IPV4\}/$IPV4}
+            url=${url//\{IPV6\}/$IPV6}
+            local resp
+            if [ "$method" = "POST" ]; then
+                resp=$(curl -fsS -X POST "$url" || true)
+            else
+                resp=$(curl -fsS "$url" || true)
+            fi
+            log "Custom: Update ausgeführt für ${target_host:-unbekannt}. Antwort: ${resp}"
+            [ -z "$resp" ] && overall_rc=1
+        else
+            log "Custom: Überspringe Update für ${target_host} (keine Änderung erkannt)."
+        fi
     done
     return $overall_rc
 }

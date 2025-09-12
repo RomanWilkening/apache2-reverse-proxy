@@ -36,6 +36,16 @@ seed_if_empty "$DEFAULTS_ROOT/conf-enabled" "/etc/apache2/conf-enabled"
 seed_if_empty "$DEFAULTS_ROOT/mods-available" "/etc/apache2/mods-available"
 seed_if_empty "$DEFAULTS_ROOT/mods-enabled" "/etc/apache2/mods-enabled"
 
+# DynDNS Konfiguration seed-on-empty
+DYNDNS_DEFAULTS_ROOT="/opt/defaults/dyndns"
+if [ -d "$DYNDNS_DEFAULTS_ROOT" ]; then
+    seed_if_empty "$DYNDNS_DEFAULTS_ROOT" "/etc/dyndns"
+    if [ ! -f "/etc/dyndns/config.env" ] && [ -f "$DYNDNS_DEFAULTS_ROOT/config.env.example" ]; then
+        cp "$DYNDNS_DEFAULTS_ROOT/config.env.example" "/etc/dyndns/config.env"
+        echo "DynDNS: /etc/dyndns/config.env aus Beispiel erzeugt."
+    fi
+fi
+
 # Falls nach Seeding noch keine Site aktiviert ist, minimale Default-Site erstellen
 if [ -z "$(ls -A /etc/apache2/sites-enabled 2>/dev/null || true)" ]; then
     echo "No enabled sites found. Creating minimal default vhost..."
@@ -67,7 +77,26 @@ if [ -f "/etc/dyndns/config.env" ]; then
     if grep -qE '^DYNDNS_CRON=' /etc/dyndns/config.env; then
         CRON_SCHEDULE=$(grep -E '^DYNDNS_CRON=' /etc/dyndns/config.env | cut -d'=' -f2-)
     fi
-    echo "${CRON_SCHEDULE} root /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1" > /etc/cron.d/dyndns-update
+    # Cron versteht keine */5 Sekunden. Emuliere 5s-Intervall via * * * * * und sleep 5 Schleife.
+    if [ "$CRON_SCHEDULE" = "*/5 * * * *" ] || [ "$CRON_SCHEDULE" = "* * * * * */5" ]; then
+        # Falls gewünscht: echte 5 Sekunden – implementiere über fünf Einträge mit sleep
+        {
+            echo "* * * * * root /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1" 
+            echo "* * * * * root sleep 5; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
+            echo "* * * * * root sleep 10; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
+            echo "* * * * * root sleep 15; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
+            echo "* * * * * root sleep 20; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
+            echo "* * * * * root sleep 25; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
+            echo "* * * * * root sleep 30; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
+            echo "* * * * * root sleep 35; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
+            echo "* * * * * root sleep 40; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
+            echo "* * * * * root sleep 45; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
+            echo "* * * * * root sleep 50; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
+            echo "* * * * * root sleep 55; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
+        } > /etc/cron.d/dyndns-update
+    else
+        echo "${CRON_SCHEDULE} root /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1" > /etc/cron.d/dyndns-update
+    fi
     chmod 0644 /etc/cron.d/dyndns-update
     echo "DynDNS: führe initiales Update aus..."
     /usr/local/bin/dyndns-updater.sh || true

@@ -27,8 +27,8 @@ services:
       # Webroot für Let's Encrypt Challenge (falls benötigt)
       - ./webroot:/var/www/html
       
-      # DynDNS Konfiguration (optional)
-      - ./dyndns-config:/etc/dyndns:ro
+      # DynDNS Konfiguration (optional, beschreibbar für automatisches Seeding)
+      - ./dyndns-config:/etc/dyndns
     environment:
       - TZ=${TZ:-Europe/Berlin}
     networks:

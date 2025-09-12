@@ -1,10 +1,10 @@
 # Apache2 Reverse Proxy mit Let's Encrypt
 
-Dieses Docker-Image bietet einen Apache2 Reverse Proxy basierend auf Ubuntu 22.04 LTS mit integrierter Let's Encrypt Unterstützung.
+Dieses Docker-Image bietet einen Apache2 Reverse Proxy basierend auf Ubuntu 24.04 LTS mit integrierter Let's Encrypt Unterstützung.
 
 ## Features
 
-- **Minimales Ubuntu 22.04 LTS** als Basis
+- **Minimales Ubuntu 24.04 LTS** als Basis
 - **Apache2** mit allen wichtigen Proxy-Modulen
 - **Let's Encrypt** Integration mit automatischer Zertifikatserneuerung
 - **Bind-Mount** Unterstützung für alle Konfigurationsdateien
@@ -169,7 +169,7 @@ Die Konfigurationen und Zertifikate bleiben durch die Bind-Mounts erhalten.
 
 ### Apache/Ubuntu Updates
 
-Das Basis-Image verwendet Ubuntu 22.04 LTS. Für Sicherheitsupdates:
+Das Basis-Image verwendet Ubuntu 24.04 LTS. Für Sicherheitsupdates:
 
 ```bash
 docker-compose pull

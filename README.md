@@ -122,6 +122,8 @@ docker exec -it apache-reverse-proxy certbot renew
 │   └── mods-enabled/          # Aktivierte Module
 ├── logs/                      # Apache Logs
 └── webroot/                   # Webroot für Let's Encrypt
+├── dyndns-config/             # DynDNS Konfiguration (Bind-Mount)
+│   └── config.env.example     # Beispiel-Konfiguration
 ```
 
 ## Konfigurationsbeispiele
@@ -139,6 +141,71 @@ docker exec -it apache-reverse-proxy certbot renew
 ### SSL mit Let's Encrypt
 
 Siehe `config/sites-available/ssl-reverse-proxy-template.conf` für eine vollständige Vorlage.
+
+## DynDNS Aktualisierung (IPv4/IPv6)
+
+Dieses Image kann Ihre externe IPv4/IPv6 an einen DynDNS-Dienst melden. Dafür wird eine Konfigurationsdatei via Bind-Mount eingebunden und ein Cronjob alle 5 Minuten (Standard) ausgeführt.
+
+### 1) Konfigurationsverzeichnis erstellen
+
+```bash
+mkdir -p dyndns-config
+cp dyndns-config/config.env.example dyndns-config/config.env
+```
+
+### 2) `docker-compose.yml` Bind-Mount (bereits enthalten)
+
+In der Compose-Datei wird `./dyndns-config` nach `/etc/dyndns` gemountet.
+
+### 3) Konfiguration anpassen (`dyndns-config/config.env`)
+
+Wählen Sie einen Provider und tragen Sie die Zugangsdaten ein. Unterstützt werden aktuell `duckdns`, `cloudflare` und `custom`.
+
+Minimalbeispiele:
+
+- DuckDNS:
+```bash
+PROVIDER=duckdns
+DUCKDNS_TOKEN=your-token
+DUCKDNS_DOMAINS=meinhost,meinhost2
+```
+
+- Cloudflare (A/AAAA Records per Name):
+```bash
+PROVIDER=cloudflare
+CLOUDFLARE_API_TOKEN=cf_api_token
+CLOUDFLARE_ZONE_ID=cf_zone_id
+CLOUDFLARE_RECORDS=example.com:A, www.example.com:AAAA
+# Optional
+CLOUDFLARE_PROXIED=false
+CLOUDFLARE_TTL=120
+```
+
+- Custom (beliebige URL mit Platzhaltern `{IPV4}` / `{IPV6}`):
+```bash
+PROVIDER=custom
+CUSTOM_URL=https://dyn.example.com/update?host=app.example.com&ip={IPV4}&ipv6={IPV6}
+# Optional
+CUSTOM_METHOD=GET
+```
+
+Optionale Einstellungen für IP-Ermittlung und Zeitplan:
+
+```bash
+# Falls Sie keine IPv6 pflegen möchten
+DISABLE_IPV6=false
+
+# Cron-Zeitplan für Updates (Standard: */5 * * * *)
+DYNDNS_CRON=*/5 * * * *
+```
+
+### 4) Starten/Neu starten
+
+```bash
+docker-compose up -d --build
+```
+
+Das initiale Update wird beim Containerstart ausgeführt. Laufende Updates erfolgen gemäß Cronplan. Log-Ausgaben finden Sie im Container-Log sowie in `/var/log/dyndns.log` (Cron-Redirect).
 
 ### WebSocket Support
 

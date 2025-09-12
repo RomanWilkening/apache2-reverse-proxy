@@ -60,8 +60,23 @@ fi
 echo "Testing Apache2 configuration..."
 apache2ctl configtest
 
-# Cron für Let's Encrypt starten
-echo "Starting cron for Let's Encrypt auto-renewal..."
+# DynDNS Cron einrichten (vor Cron-Start)
+if [ -f "/etc/dyndns/config.env" ]; then
+    echo "Config für DynDNS gefunden. Richte Cronjob ein..."
+    CRON_SCHEDULE="*/5 * * * *"
+    if grep -qE '^DYNDNS_CRON=' /etc/dyndns/config.env; then
+        CRON_SCHEDULE=$(grep -E '^DYNDNS_CRON=' /etc/dyndns/config.env | cut -d'=' -f2-)
+    fi
+    echo "${CRON_SCHEDULE} root /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1" > /etc/cron.d/dyndns-update
+    chmod 0644 /etc/cron.d/dyndns-update
+    echo "DynDNS: führe initiales Update aus..."
+    /usr/local/bin/dyndns-updater.sh || true
+else
+    echo "Keine DynDNS-Konfiguration vorhanden (überspringe)."
+fi
+
+# Cron für Let's Encrypt und DynDNS starten
+echo "Starting cron for renewals and dyndns..."
 service cron start
 
 # ServerName setzen falls nicht vorhanden

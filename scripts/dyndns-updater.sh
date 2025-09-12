@@ -71,23 +71,30 @@ update_duckdns() {
         log "DuckDNS: DUCKDNS_TOKEN oder DUCKDNS_DOMAINS fehlt."
         return 1
     fi
-    local url="https://www.duckdns.org/update?domains=${DUCKDNS_DOMAINS}&token=${DUCKDNS_TOKEN}"
-    if [ -n "$IPV4" ]; then
-        url+="&ip=$IPV4"
-    else
-        url+="&clear=true" # clears IPv4
-    fi
-    if [ -n "$IPV6" ]; then
-        url+="&ipv6=$IPV6"
-    fi
-    local resp
-    resp=$(curl -fsS "$url" || true)
-    if echo "$resp" | grep -qi "OK"; then
-        log "DuckDNS: Update erfolgreich für ${DUCKDNS_DOMAINS}."
-    else
-        log "DuckDNS: Update fehlgeschlagen: $resp"
-        return 1
-    fi
+    local IFS=','
+    local overall_rc=0
+    for domain in $DUCKDNS_DOMAINS; do
+        domain=$(echo "$domain" | xargs)
+        [ -z "$domain" ] && continue
+        local url="https://www.duckdns.org/update?domains=${domain}&token=${DUCKDNS_TOKEN}"
+        if [ -n "$IPV4" ]; then
+            url+="&ip=$IPV4"
+        else
+            url+="&clear=true" # clears IPv4
+        fi
+        if [ -n "$IPV6" ]; then
+            url+="&ipv6=$IPV6"
+        fi
+        local resp
+        resp=$(curl -fsS "$url" || true)
+        if echo "$resp" | grep -qi "OK"; then
+            log "DuckDNS: Update erfolgreich für ${domain}."
+        else
+            log "DuckDNS: Update fehlgeschlagen für ${domain}: $resp"
+            overall_rc=1
+        fi
+    done
+    return $overall_rc
 }
 
 cloudflare_api() {
@@ -173,22 +180,35 @@ update_cloudflare() {
 }
 
 update_custom() {
-    # CUSTOM_URL supports placeholders {IPV4} and {IPV6}
-    if [ -z "${CUSTOM_URL:-}" ]; then
-        log "Custom: CUSTOM_URL fehlt."
+    # CUSTOM_URL or CUSTOM_URLS support placeholders {IPV4} and {IPV6}
+    local urls="${CUSTOM_URLS:-}"
+    if [ -z "$urls" ] && [ -n "${CUSTOM_URL:-}" ]; then
+        urls="$CUSTOM_URL"
+    fi
+    if [ -z "$urls" ]; then
+        log "Custom: CUSTOM_URL(S) fehlt."
         return 1
     fi
-    local url="$CUSTOM_URL"
-    url=${url//\{IPV4\}/$IPV4}
-    url=${url//\{IPV6\}/$IPV6}
     local method="${CUSTOM_METHOD:-GET}"
-    local resp
-    if [ "$method" = "POST" ]; then
-        resp=$(curl -fsS -X POST "$url" || true)
-    else
-        resp=$(curl -fsS "$url" || true)
-    fi
-    log "Custom: Antwort: ${resp}"
+    local IFS=','
+    local overall_rc=0
+    for raw in $urls; do
+        local tmpl
+        tmpl=$(echo "$raw" | xargs)
+        [ -z "$tmpl" ] && continue
+        local url="$tmpl"
+        url=${url//\{IPV4\}/$IPV4}
+        url=${url//\{IPV6\}/$IPV6}
+        local resp
+        if [ "$method" = "POST" ]; then
+            resp=$(curl -fsS -X POST "$url" || true)
+        else
+            resp=$(curl -fsS "$url" || true)
+        fi
+        log "Custom: Antwort für ${tmpl}: ${resp}"
+        [ -z "$resp" ] && overall_rc=1
+    done
+    return $overall_rc
 }
 
 case "$PROVIDER" in

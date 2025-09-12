@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     certbot \
     python3-certbot-apache \
     curl \
+    jq \
     ca-certificates \
     tzdata \
     cron \
@@ -33,7 +34,8 @@ RUN mkdir -p /etc/apache2/sites-available \
     && mkdir -p /etc/apache2/sites-enabled \
     && mkdir -p /etc/letsencrypt \
     && mkdir -p /var/log/apache2 \
-    && mkdir -p /var/www/html
+    && mkdir -p /var/www/html \
+    && mkdir -p /etc/dyndns
 
 # Standard Apache Konfiguration entfernen
 RUN rm -f /etc/apache2/sites-enabled/000-default.conf
@@ -54,6 +56,10 @@ RUN echo "0 0,12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 
 # Entrypoint-Skript kopieren
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# DynDNS Updater Script
+COPY scripts/dyndns-updater.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/dyndns-updater.sh
 
 # Apache2 Foreground Mode konfigurieren
 ENV APACHE_RUN_USER www-data

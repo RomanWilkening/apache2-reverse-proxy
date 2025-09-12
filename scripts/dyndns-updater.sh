@@ -1,8 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# DynDNS Updater
-# Supported providers: duckdns, cloudflare, custom
+# DynDNS Updater (Custom-only)
 
 CONFIG_FILE="/etc/dyndns/config.env"
 
@@ -21,7 +20,6 @@ set -a
 . "$CONFIG_FILE"
 set +a
 
-PROVIDER="${PROVIDER:-}"
 DISABLE_IPV4="${DISABLE_IPV4:-false}"
 DISABLE_IPV6="${DISABLE_IPV6:-false}"
 
@@ -65,143 +63,130 @@ IPV4=""; IPV6=""
 discover_ipv4 || log "Warnung: Konnte externe IPv4 nicht ermitteln."
 discover_ipv6 || log "Warnung: Konnte externe IPv6 nicht ermitteln."
 
-update_duckdns() {
-    # Required: DUCKDNS_TOKEN, DUCKDNS_DOMAINS (comma-separated without spaces)
-    if [ -z "${DUCKDNS_TOKEN:-}" ] || [ -z "${DUCKDNS_DOMAINS:-}" ]; then
-        log "DuckDNS: DUCKDNS_TOKEN oder DUCKDNS_DOMAINS fehlt."
-        return 1
-    fi
-    local url="https://www.duckdns.org/update?domains=${DUCKDNS_DOMAINS}&token=${DUCKDNS_TOKEN}"
-    if [ -n "$IPV4" ]; then
-        url+="&ip=$IPV4"
-    else
-        url+="&clear=true" # clears IPv4
-    fi
-    if [ -n "$IPV6" ]; then
-        url+="&ipv6=$IPV6"
-    fi
-    local resp
-    resp=$(curl -fsS "$url" || true)
-    if echo "$resp" | grep -qi "OK"; then
-        log "DuckDNS: Update erfolgreich für ${DUCKDNS_DOMAINS}."
-    else
-        log "DuckDNS: Update fehlgeschlagen: $resp"
-        return 1
-    fi
+urldecode() {
+    local data="$1"
+    data="${data//+/ }"
+    printf '%b' "${data//%/\\x}"
 }
 
-cloudflare_api() {
-    local method="$1"; shift
-    local path="$1"; shift
-    local data="${1:-}"
-    if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-        log "Cloudflare: CLOUDFLARE_API_TOKEN fehlt."
-        return 1
-    fi
-    local curl_args=(
-        -fsS -X "$method" "https://api.cloudflare.com/client/v4${path}"
-        -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
-        -H "Content-Type: application/json"
-    )
-    if [ -n "$data" ]; then
-        curl_args+=(--data "$data")
-    fi
-    curl "${curl_args[@]}"
-}
-
-update_cloudflare_record() {
-    local type="$1"; local name="$2"; local content="$3"
-    local proxied="${CLOUDFLARE_PROXIED:-false}"
-    local ttl="${CLOUDFLARE_TTL:-120}"
-    if [ -z "${CLOUDFLARE_ZONE_ID:-}" ]; then
-        log "Cloudflare: CLOUDFLARE_ZONE_ID fehlt."
-        return 1
-    fi
-    # Find record id
-    local qpath="/zones/${CLOUDFLARE_ZONE_ID}/dns_records?type=${type}&name=${name}"
-    local rec
-    rec=$(cloudflare_api GET "$qpath" || true)
-    local id
-    id=$(echo "$rec" | jq -r '.result[0].id // empty')
-    if [ -z "$id" ]; then
-        log "Cloudflare: DNS-Record nicht gefunden: ${name} (${type})."
-        return 1
-    fi
-    local payload
-    payload=$(jq -cn --arg t "$type" --arg n "$name" --arg c "$content" --argjson p $( [ "$proxied" = "true" ] && echo true || echo false ) --argjson ttl "$ttl" '{type:$t,name:$n,content:$c,proxied:$p,ttl:$ttl}')
-    local resp
-    resp=$(cloudflare_api PUT "/zones/${CLOUDFLARE_ZONE_ID}/dns_records/${id}" "$payload" || true)
-    if echo "$resp" | jq -e '.success == true' >/dev/null 2>&1; then
-        log "Cloudflare: ${name} ${type} aktualisiert auf ${content}."
-    else
-        log "Cloudflare: Update fehlgeschlagen für ${name} ${type}: $(echo "$resp" | jq -r '.errors[0].message // . | @json')"
-        return 1
-    fi
-}
-
-update_cloudflare() {
-    # CLOUDFLARE_RECORDS: comma-separated entries like "example.com:A, www.example.com:AAAA"
-    if [ -z "${CLOUDFLARE_RECORDS:-}" ]; then
-        log "Cloudflare: CLOUDFLARE_RECORDS fehlt."
-        return 1
-    fi
-    local IFS=','
-    for entry in $CLOUDFLARE_RECORDS; do
-        entry=$(echo "$entry" | xargs)
-        local name="${entry%%:*}"
-        local type="${entry##*:}"
-        case "$type" in
-            A)
-                if [ -n "$IPV4" ]; then
-                    update_cloudflare_record A "$name" "$IPV4" || true
-                else
-                    log "Cloudflare: Überspringe ${name} A (keine IPv4)."
-                fi
-                ;;
-            AAAA)
-                if [ -n "$IPV6" ]; then
-                    update_cloudflare_record AAAA "$name" "$IPV6" || true
-                else
-                    log "Cloudflare: Überspringe ${name} AAAA (keine IPv6)."
-                fi
-                ;;
-            *)
-                log "Cloudflare: Unbekannter Typ in CLOUDFLARE_RECORDS: $type"
+extract_host_from_url() {
+    # Heuristik: aus Query-Parametern einen Hostnamen lesen
+    # Unterstützte Param-Namen: host, hostname, name, domain, record, fqdn
+    local url="$1"
+    case "$url" in
+        *\?*) : ;;
+        *) echo ""; return 0 ;;
+    esac
+    local query
+    query="${url#*?}"
+    query="${query%%#*}"
+    local pair key val
+    local IFS='&'
+    for pair in $query; do
+        key="${pair%%=*}"
+        val="${pair#*=}"
+        key=$(printf '%s' "$key" | tr 'A-Z' 'a-z')
+        val=$(urldecode "$val")
+        case "$key" in
+            host|hostname|name|domain|record|fqdn)
+                echo "$val"
+                return 0
                 ;;
         esac
     done
+    echo ""
 }
+
+resolve_a_records() {
+    local host="$1"
+    getent ahostsv4 "$host" | awk '{print $1}' | sort -u
+}
+
+resolve_aaaa_records() {
+    local host="$1"
+    getent ahostsv6 "$host" | awk '{print $1}' | sort -u
+}
+
+    
 
 update_custom() {
-    # CUSTOM_URL supports placeholders {IPV4} and {IPV6}
-    if [ -z "${CUSTOM_URL:-}" ]; then
-        log "Custom: CUSTOM_URL fehlt."
+    # CUSTOM_URL or CUSTOM_URLS support placeholders {IPV4} and {IPV6}
+    local urls="${CUSTOM_URLS:-}"
+    if [ -z "$urls" ] && [ -n "${CUSTOM_URL:-}" ]; then
+        urls="$CUSTOM_URL"
+    fi
+    if [ -z "$urls" ]; then
+        log "Custom: CUSTOM_URL(S) fehlt."
         return 1
     fi
-    local url="$CUSTOM_URL"
-    url=${url//\{IPV4\}/$IPV4}
-    url=${url//\{IPV6\}/$IPV6}
     local method="${CUSTOM_METHOD:-GET}"
-    local resp
-    if [ "$method" = "POST" ]; then
-        resp=$(curl -fsS -X POST "$url" || true)
-    else
-        resp=$(curl -fsS "$url" || true)
-    fi
-    log "Custom: Antwort: ${resp}"
+    local overall_rc=0
+    local IFS=','
+    local -a url_list
+    local -a host_list
+    read -ra url_list <<< "$urls"
+    read -ra host_list <<< "${CUSTOM_HOSTS:-}"
+    local i
+    for i in "${!url_list[@]}"; do
+        local tmpl
+        tmpl=$(echo "${url_list[$i]}" | xargs)
+        [ -z "$tmpl" ] && continue
+        local target_host=""
+        if [ ${#host_list[@]} -gt $i ] && [ -n "${host_list[$i]:-}" ]; then
+            target_host=$(echo "${host_list[$i]}" | xargs)
+        else
+            target_host=$(extract_host_from_url "$tmpl")
+        fi
+
+        local do_update=false
+        local checked_any=false
+        if [ "$DISABLE_IPV4" != "true" ] && [ -n "$IPV4" ] && [ -n "$target_host" ]; then
+            checked_any=true
+            local current_a
+            current_a=$(resolve_a_records "$target_host" || true)
+            if ! echo "$current_a" | grep -qx "$IPV4" 2>/dev/null; then
+                do_update=true
+            else
+                log "Custom: Kein A-Update nötig für ${target_host} (bestehendes A == $IPV4)."
+            fi
+        fi
+        if [ "$DISABLE_IPV6" != "true" ] && [ -n "$IPV6" ] && [ -n "$target_host" ]; then
+            checked_any=true
+            local current_aaaa
+            current_aaaa=$(resolve_aaaa_records "$target_host" || true)
+            if ! echo "$current_aaaa" | grep -qx "$IPV6" 2>/dev/null; then
+                do_update=true
+            else
+                log "Custom: Kein AAAA-Update nötig für ${target_host} (bestehendes AAAA == $IPV6)."
+            fi
+        fi
+
+        if [ -z "$target_host" ]; then
+            log "Custom: Zielhost nicht ermittelbar aus URL. Führe Update vorsorglich aus."
+            do_update=true
+        elif [ "$checked_any" = false ]; then
+            log "Custom: Keine öffentliche IP ermittelt oder Updates deaktiviert. Überspringe ${target_host}."
+            continue
+        fi
+
+        if [ "$do_update" = true ]; then
+            local url="$tmpl"
+            url=${url//\{IPV4\}/$IPV4}
+            url=${url//\{IPV6\}/$IPV6}
+            local resp
+            if [ "$method" = "POST" ]; then
+                resp=$(curl -fsS -X POST "$url" || true)
+            else
+                resp=$(curl -fsS "$url" || true)
+            fi
+            log "Custom: Update ausgeführt für ${target_host:-unbekannt}. Antwort: ${resp}"
+            [ -z "$resp" ] && overall_rc=1
+        else
+            log "Custom: Überspringe Update für ${target_host} (keine Änderung erkannt)."
+        fi
+    done
+    return $overall_rc
 }
 
-case "$PROVIDER" in
-    duckdns)
-        update_duckdns ;;
-    cloudflare)
-        update_cloudflare ;;
-    custom)
-        update_custom ;;
-    "")
-        log "Kein PROVIDER definiert. Vorgang abgebrochen."
-        exit 0 ;;
-    *)
-        log "Unbekannter PROVIDER: $PROVIDER" ;;
-esac
+update_custom
 

@@ -49,6 +49,10 @@ RUN mkdir -p /opt/defaults/apache2 \
     && cp -a /etc/apache2/mods-available /opt/defaults/apache2/ \
     && cp -a /etc/apache2/mods-enabled /opt/defaults/apache2/
 
+# Defaults der DynDNS-Konfiguration bereitstellen
+RUN mkdir -p /opt/defaults/dyndns
+COPY dyndns-config/ /opt/defaults/dyndns/
+
 # Cron für Let's Encrypt Auto-Renewal
 RUN echo "0 0,12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful'" > /etc/cron.d/certbot-renew \
     && chmod 0644 /etc/cron.d/certbot-renew

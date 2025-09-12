@@ -15,7 +15,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     tzdata \
     cron \
-    isc-dhcp-client \
     nano \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

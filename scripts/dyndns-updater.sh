@@ -231,5 +231,15 @@ update_custom() {
     return $overall_rc
 }
 
-update_custom
+UPDATE_STATUS="OK"
+update_custom || UPDATE_STATUS="Fehler"
+
+# MQTT Publishing (optional – only if MQTT_HOST is configured)
+if grep -qE '^MQTT_HOST=' "$CONFIG_FILE" 2>/dev/null; then
+    MQTT_TIMESTAMP=""
+    if [ "$UPDATE_STATUS" = "OK" ]; then
+        MQTT_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+    fi
+    /usr/local/bin/mqtt-publish.sh "$IPV4" "$IPV6" "$UPDATE_STATUS" "$MQTT_TIMESTAMP" || true
+fi
 

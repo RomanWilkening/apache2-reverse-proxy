@@ -215,6 +215,40 @@ docker-compose up -d --build
 
 Das initiale Update wird beim Containerstart ausgeführt. Laufende Updates erfolgen gemäß Cronplan. Log-Ausgaben (Erfolg und Fehler) sind direkt in den Docker-Logs sichtbar (`docker logs apache-reverse-proxy`).
 
+## MQTT / Home Assistant Integration
+
+Der DynDNS-Updater kann seinen Status per MQTT an einen Home Assistant (oder einen beliebigen MQTT-Broker) melden. Die Sensoren werden per **MQTT Auto-Discovery** automatisch in Home Assistant sichtbar.
+
+### Veröffentlichte Sensoren
+
+| Sensor | Beschreibung |
+|---|---|
+| **IPv4 Adresse** | Aktuelle öffentliche IPv4-Adresse |
+| **IPv6 Adresse** | Aktuelle öffentliche IPv6-Adresse |
+| **Update Status** | Status der letzten Aktualisierung (`OK` / `Fehler`) |
+| **Letzte erfolgreiche Aktualisierung** | ISO 8601 Zeitstempel der letzten erfolgreichen Aktualisierung |
+
+### Konfiguration (`dyndns-config/config.env`)
+
+Fügen Sie die folgenden Variablen zu Ihrer `config.env` hinzu:
+
+```bash
+# MQTT-Broker Adresse (Pflicht – ohne diese Variable ist MQTT deaktiviert)
+MQTT_HOST=192.168.1.100
+
+# MQTT-Port (Standard: 1883)
+MQTT_PORT=1883
+
+# Optionale Authentifizierung
+MQTT_USER=mqtt_user
+MQTT_PASSWORD=mqtt_passwort
+
+# Topic-Präfix (Standard: dyndns)
+MQTT_TOPIC_PREFIX=dyndns
+```
+
+Die Sensoren erscheinen automatisch in Home Assistant unter dem Gerät **DynDNS Updater**. Es ist keine manuelle YAML-Konfiguration in Home Assistant nötig.
+
 ### WebSocket Support
 
 ```apache

@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     tzdata \
     cron \
+    mosquitto-clients \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -68,6 +69,10 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # DynDNS Updater Script
 COPY scripts/dyndns-updater.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/dyndns-updater.sh
+
+# MQTT Publisher Script
+COPY scripts/mqtt-publish.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/mqtt-publish.sh
 
 # Apache2 Foreground Mode konfigurieren
 ENV APACHE_RUN_USER www-data

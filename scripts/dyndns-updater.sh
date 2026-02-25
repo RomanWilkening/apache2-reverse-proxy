@@ -6,20 +6,24 @@ set -euo pipefail
 CONFIG_FILE="/etc/dyndns/config.env"
 
 # Log to Docker stdout so messages appear in 'docker logs'
+# NOTE: Cron already redirects stdout/stderr to /proc/1/fd/{1,2},
+# so we only write there when NOT already redirected (e.g. manual run).
 log() {
     local msg="[DynDNS $(date +'%Y-%m-%d %H:%M:%S')] $*"
-    if [ -w /proc/1/fd/1 ]; then
+    if [ -w /proc/1/fd/1 ] && ! [ /proc/1/fd/1 -ef /dev/stdout ] 2>/dev/null; then
         echo "$msg" > /proc/1/fd/1
+    else
+        echo "$msg"
     fi
-    echo "$msg"
 }
 
 log_error() {
     local msg="[DynDNS $(date +'%Y-%m-%d %H:%M:%S')] ERROR: $*"
-    if [ -w /proc/1/fd/2 ]; then
+    if [ -w /proc/1/fd/2 ] && ! [ /proc/1/fd/2 -ef /dev/stderr ] 2>/dev/null; then
         echo "$msg" > /proc/1/fd/2
+    else
+        echo "$msg" >&2
     fi
-    echo "$msg" >&2
 }
 
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -111,6 +115,11 @@ fi
 
 # Aktuelle IPs für nächsten Lauf speichern
 printf '%s\n%s\n' "$IPV4" "$IPV6" > "$LAST_IP_FILE"
+
+# Wenn sich keine IP geändert hat, gibt es nichts zu tun
+if [ "$IPV4" = "$LAST_IPV4" ] && [ "$IPV6" = "$LAST_IPV6" ]; then
+    exit 0
+fi
 
 urldecode() {
     local data="$1"

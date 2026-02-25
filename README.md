@@ -213,7 +213,7 @@ DYNDNS_CRON=*/5 * * * *
 docker-compose up -d --build
 ```
 
-Das initiale Update wird beim Containerstart ausgeführt. Laufende Updates erfolgen gemäß Cronplan. Log-Ausgaben finden Sie im Container-Log sowie in `/var/log/dyndns.log` (Cron-Redirect).
+Das initiale Update wird beim Containerstart ausgeführt. Laufende Updates erfolgen gemäß Cronplan. Log-Ausgaben (Erfolg und Fehler) sind direkt in den Docker-Logs sichtbar (`docker logs apache-reverse-proxy`).
 
 ### WebSocket Support
 

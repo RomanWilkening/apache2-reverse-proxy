@@ -16,7 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     tzdata \
     cron \
-    nano \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,8 +25,7 @@ RUN a2enmod proxy \
     && a2enmod ssl \
     && a2enmod rewrite \
     && a2enmod headers \
-    && a2enmod proxy_wstunnel \
-    && a2enmod proxy_connect
+    && a2enmod proxy_wstunnel
 
 # Verzeichnisse für Bind-Mounts erstellen
 RUN mkdir -p /etc/apache2/sites-available \
@@ -39,6 +37,12 @@ RUN mkdir -p /etc/apache2/sites-available \
 
 # Standard Apache Konfiguration entfernen
 RUN rm -f /etc/apache2/sites-enabled/000-default.conf
+
+# Security Hardening: Hide Apache version, disable TRACE
+RUN echo "ServerTokens Prod" >> /etc/apache2/conf-available/security.conf \
+    && echo "ServerSignature Off" >> /etc/apache2/conf-available/security.conf \
+    && echo "TraceEnable Off" >> /etc/apache2/conf-available/security.conf \
+    && a2enconf security
 
 # Defaults der Apache-Konfiguration für Seed-on-empty sichern
 RUN mkdir -p /opt/defaults/apache2 \

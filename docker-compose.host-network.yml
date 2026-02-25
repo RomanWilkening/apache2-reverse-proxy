@@ -1,12 +1,29 @@
+# Alternative Docker Compose Konfiguration mit Host-Netzwerk
+#
+# Verwenden Sie diese Datei für die einfachste IPv6-Konfiguration.
+# Der Container teilt den Netzwerk-Stack des Hosts und hat direkten Zugang
+# zu dessen IPv4- und IPv6-Adressen.
+#
+# Vorteile:
+#   - IPv6 funktioniert sofort ohne zusätzliche Konfiguration
+#   - Container nutzt die globale IPv6 des Hosts
+#   - Kein Docker-Daemon IPv6-Setup nötig
+#
+# Nachteile:
+#   - Keine Netzwerkisolierung (Container teilt Host-Ports)
+#   - Port-Mapping (ports:) wird ignoriert
+#   - DNS-basierte Container-Kommunikation nicht verfügbar
+#
+# Starten:
+#   docker compose -f docker-compose.host-network.yml up -d
+
 services:
   apache-reverse-proxy:
     build: .
     image: apache-reverse-proxy:latest
     container_name: apache-reverse-proxy
     restart: unless-stopped
-    ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
+    network_mode: host
     volumes:
       # Apache2 Konfiguration
       - ./config/sites-available:/etc/apache2/sites-available
@@ -15,32 +32,21 @@ services:
       - ./config/conf-enabled:/etc/apache2/conf-enabled
       - ./config/mods-available:/etc/apache2/mods-available
       - ./config/mods-enabled:/etc/apache2/mods-enabled
-      
+
       # Let's Encrypt Zertifikate (persistent)
       - letsencrypt:/etc/letsencrypt
-      
+
       # Apache2 Logs (optional)
       - ./logs:/var/log/apache2
-      
+
       # Webroot für Let's Encrypt Challenge (falls benötigt)
       - ./webroot:/var/www/html
-      
+
       # DynDNS Konfiguration (optional, beschreibbar für automatisches Seeding)
       - ./dyndns-config:/etc/dyndns
     environment:
       - TZ=${TZ:-Europe/Berlin}
-    networks:
-      - proxy-network
 
 volumes:
   letsencrypt:
     name: apache-letsencrypt
-
-networks:
-  proxy-network:
-    driver: bridge
-    enable_ipv6: true
-    ipam:
-      config:
-        - subnet: 172.28.0.0/16
-        - subnet: ${IPV6_SUBNET:-fd00:dead:beef::/48}

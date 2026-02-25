@@ -5,25 +5,14 @@ set -euo pipefail
 
 CONFIG_FILE="/etc/dyndns/config.env"
 
-# Log to Docker stdout so messages appear in 'docker logs'
-# NOTE: Cron already redirects stdout/stderr to /proc/1/fd/{1,2},
-# so we only write there when NOT already redirected (e.g. manual run).
+# Log to stdout/stderr – cron already redirects to /proc/1/fd/{1,2},
+# so plain echo is sufficient and avoids duplicate log entries.
 log() {
-    local msg="[DynDNS $(date +'%Y-%m-%d %H:%M:%S')] $*"
-    if [ -w /proc/1/fd/1 ] && ! [ /proc/1/fd/1 -ef /dev/stdout ] 2>/dev/null; then
-        echo "$msg" > /proc/1/fd/1
-    else
-        echo "$msg"
-    fi
+    echo "[DynDNS $(date +'%Y-%m-%d %H:%M:%S')] $*"
 }
 
 log_error() {
-    local msg="[DynDNS $(date +'%Y-%m-%d %H:%M:%S')] ERROR: $*"
-    if [ -w /proc/1/fd/2 ] && ! [ /proc/1/fd/2 -ef /dev/stderr ] 2>/dev/null; then
-        echo "$msg" > /proc/1/fd/2
-    else
-        echo "$msg" >&2
-    fi
+    echo "[DynDNS $(date +'%Y-%m-%d %H:%M:%S')] ERROR: $*" >&2
 }
 
 if [ ! -f "$CONFIG_FILE" ]; then

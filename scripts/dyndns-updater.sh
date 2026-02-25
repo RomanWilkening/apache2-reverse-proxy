@@ -6,20 +6,24 @@ set -euo pipefail
 CONFIG_FILE="/etc/dyndns/config.env"
 
 # Log to Docker stdout so messages appear in 'docker logs'
+# NOTE: Cron already redirects stdout/stderr to /proc/1/fd/{1,2},
+# so we only write there when NOT already redirected (e.g. manual run).
 log() {
     local msg="[DynDNS $(date +'%Y-%m-%d %H:%M:%S')] $*"
-    if [ -w /proc/1/fd/1 ]; then
+    if [ -w /proc/1/fd/1 ] && ! [ /proc/1/fd/1 -ef /dev/stdout ] 2>/dev/null; then
         echo "$msg" > /proc/1/fd/1
+    else
+        echo "$msg"
     fi
-    echo "$msg"
 }
 
 log_error() {
     local msg="[DynDNS $(date +'%Y-%m-%d %H:%M:%S')] ERROR: $*"
-    if [ -w /proc/1/fd/2 ]; then
+    if [ -w /proc/1/fd/2 ] && ! [ /proc/1/fd/2 -ef /dev/stderr ] 2>/dev/null; then
         echo "$msg" > /proc/1/fd/2
+    else
+        echo "$msg" >&2
     fi
-    echo "$msg" >&2
 }
 
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -27,11 +31,21 @@ if [ ! -f "$CONFIG_FILE" ]; then
     exit 0
 fi
 
-# Load configuration (supports simple KEY=VALUE lines)
-# shellcheck disable=SC2046
-set -a
-. "$CONFIG_FILE"
-set +a
+# Load configuration (supports simple KEY=VALUE lines, even unquoted values with spaces)
+while IFS= read -r line || [ -n "$line" ]; do
+    # Skip empty lines and comments
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    # Only process lines that look like KEY=VALUE
+    if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z_0-9]*)=(.*) ]]; then
+        key="${BASH_REMATCH[1]}"
+        val="${BASH_REMATCH[2]}"
+        # Strip surrounding quotes if present
+        if [[ "$val" =~ ^\"(.*)\"$ ]] || [[ "$val" =~ ^\'(.*)\'$ ]]; then
+            val="${BASH_REMATCH[1]}"
+        fi
+        export "$key=$val"
+    fi
+done < "$CONFIG_FILE"
 
 DISABLE_IPV4="${DISABLE_IPV4:-false}"
 DISABLE_IPV6="${DISABLE_IPV6:-false}"
@@ -76,16 +90,35 @@ discover_ipv6() {
     return 1
 }
 
+LAST_IP_FILE="/tmp/dyndns_last_ips"
+LAST_IPV4=""; LAST_IPV6=""
+if [ -f "$LAST_IP_FILE" ]; then
+    LAST_IPV4=$(sed -n '1p' "$LAST_IP_FILE")
+    LAST_IPV6=$(sed -n '2p' "$LAST_IP_FILE")
+fi
+
 IPV4=""; IPV6=""
 if discover_ipv4; then
-    [ -n "$IPV4" ] && log "IPv4 ermittelt: $IPV4"
+    if [ -n "$IPV4" ] && [ "$IPV4" != "$LAST_IPV4" ]; then
+        log "Neue IPv4 ermittelt: $IPV4"
+    fi
 else
     log_error "Konnte externe IPv4 nicht ermitteln (alle Endpunkte fehlgeschlagen)."
 fi
 if discover_ipv6; then
-    [ -n "$IPV6" ] && log "IPv6 ermittelt: $IPV6"
+    if [ -n "$IPV6" ] && [ "$IPV6" != "$LAST_IPV6" ]; then
+        log "Neue IPv6 ermittelt: $IPV6"
+    fi
 else
     log_error "Konnte externe IPv6 nicht ermitteln (alle Endpunkte fehlgeschlagen)."
+fi
+
+# Aktuelle IPs für nächsten Lauf speichern
+printf '%s\n%s\n' "$IPV4" "$IPV6" > "$LAST_IP_FILE"
+
+# Wenn sich keine IP geändert hat, gibt es nichts zu tun
+if [ "$IPV4" = "$LAST_IPV4" ] && [ "$IPV6" = "$LAST_IPV6" ]; then
+    exit 0
 fi
 
 urldecode() {
@@ -173,8 +206,6 @@ update_custom() {
             current_a=$(resolve_a_records "$domain" || true)
             if ! echo "$current_a" | grep -qx "$IPV4" 2>/dev/null; then
                 do_update=true
-            else
-                log "Custom: Kein A-Update nötig für ${domain} (bestehendes A == $IPV4)."
             fi
         fi
 
@@ -184,13 +215,10 @@ update_custom() {
             current_aaaa=$(resolve_aaaa_records "$domain" || true)
             if ! echo "$current_aaaa" | grep -qx "$IPV6" 2>/dev/null; then
                 do_update=true
-            else
-                log "Custom: Kein AAAA-Update nötig für ${domain} (bestehendes AAAA == $IPV6)."
             fi
         fi
 
         if [ "$checked_any" = false ]; then
-            log "Custom: Keine öffentliche IP ermittelt oder Updates deaktiviert. Überspringe ${domain}."
             continue
         fi
 
@@ -208,6 +236,9 @@ update_custom() {
             url=${url//\{PASSWORD\}/$password}
             url=${url//\{password\}/$password}
 
+            # HTML-Entity &amp; in echtes & umwandeln (häufiger Copy-Paste-Fehler)
+            url=${url//&amp;/\&}
+
             local resp http_code
             if [ "$method" = "POST" ]; then
                 http_code=$(curl -sS -o /tmp/dyndns_resp -w '%{http_code}' --max-time "$CURL_TIMEOUT" -X POST "$url" || echo "000")
@@ -217,14 +248,16 @@ update_custom() {
             resp=$(cat /tmp/dyndns_resp 2>/dev/null || true)
             rm -f /tmp/dyndns_resp
 
+            local sent_ips=""
+            [ -n "$IPV4" ] && sent_ips="IPv4=${IPV4}"
+            [ -n "$IPV6" ] && sent_ips="${sent_ips:+${sent_ips}, }IPv6=${IPV6}"
+
             if [ "$http_code" -ge 200 ] 2>/dev/null && [ "$http_code" -lt 300 ] 2>/dev/null && [ -n "$resp" ]; then
-                log "Update ERFOLGREICH für ${domain} (HTTP ${http_code}). Antwort: ${resp}"
+                log "Update ERFOLGREICH für ${domain} [${sent_ips}] (HTTP ${http_code}). Antwort: ${resp}"
             else
                 log_error "Update FEHLGESCHLAGEN für ${domain} (HTTP ${http_code}). Antwort: ${resp}"
                 overall_rc=1
             fi
-        else
-            log "Custom: Überspringe Update für ${domain} (keine Änderung erkannt)."
         fi
     done
 

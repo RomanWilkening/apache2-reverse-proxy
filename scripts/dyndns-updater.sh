@@ -86,17 +86,31 @@ discover_ipv6() {
     return 1
 }
 
+LAST_IP_FILE="/tmp/dyndns_last_ips"
+LAST_IPV4=""; LAST_IPV6=""
+if [ -f "$LAST_IP_FILE" ]; then
+    LAST_IPV4=$(sed -n '1p' "$LAST_IP_FILE")
+    LAST_IPV6=$(sed -n '2p' "$LAST_IP_FILE")
+fi
+
 IPV4=""; IPV6=""
 if discover_ipv4; then
-    [ -n "$IPV4" ] && log "IPv4 ermittelt: $IPV4"
+    if [ -n "$IPV4" ] && [ "$IPV4" != "$LAST_IPV4" ]; then
+        log "Neue IPv4 ermittelt: $IPV4"
+    fi
 else
     log_error "Konnte externe IPv4 nicht ermitteln (alle Endpunkte fehlgeschlagen)."
 fi
 if discover_ipv6; then
-    [ -n "$IPV6" ] && log "IPv6 ermittelt: $IPV6"
+    if [ -n "$IPV6" ] && [ "$IPV6" != "$LAST_IPV6" ]; then
+        log "Neue IPv6 ermittelt: $IPV6"
+    fi
 else
     log_error "Konnte externe IPv6 nicht ermitteln (alle Endpunkte fehlgeschlagen)."
 fi
+
+# Aktuelle IPs für nächsten Lauf speichern
+printf '%s\n%s\n' "$IPV4" "$IPV6" > "$LAST_IP_FILE"
 
 urldecode() {
     local data="$1"
@@ -183,8 +197,6 @@ update_custom() {
             current_a=$(resolve_a_records "$domain" || true)
             if ! echo "$current_a" | grep -qx "$IPV4" 2>/dev/null; then
                 do_update=true
-            else
-                log "Custom: Kein A-Update nötig für ${domain} (bestehendes A == $IPV4)."
             fi
         fi
 
@@ -194,13 +206,10 @@ update_custom() {
             current_aaaa=$(resolve_aaaa_records "$domain" || true)
             if ! echo "$current_aaaa" | grep -qx "$IPV6" 2>/dev/null; then
                 do_update=true
-            else
-                log "Custom: Kein AAAA-Update nötig für ${domain} (bestehendes AAAA == $IPV6)."
             fi
         fi
 
         if [ "$checked_any" = false ]; then
-            log "Custom: Keine öffentliche IP ermittelt oder Updates deaktiviert. Überspringe ${domain}."
             continue
         fi
 
@@ -233,8 +242,6 @@ update_custom() {
                 log_error "Update FEHLGESCHLAGEN für ${domain} (HTTP ${http_code}). Antwort: ${resp}"
                 overall_rc=1
             fi
-        else
-            log "Custom: Überspringe Update für ${domain} (keine Änderung erkannt)."
         fi
     done
 

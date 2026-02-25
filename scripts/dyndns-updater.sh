@@ -236,6 +236,9 @@ update_custom() {
             url=${url//\{PASSWORD\}/$password}
             url=${url//\{password\}/$password}
 
+            # HTML-Entity &amp; in echtes & umwandeln (häufiger Copy-Paste-Fehler)
+            url=${url//&amp;/\&}
+
             local resp http_code
             if [ "$method" = "POST" ]; then
                 http_code=$(curl -sS -o /tmp/dyndns_resp -w '%{http_code}' --max-time "$CURL_TIMEOUT" -X POST "$url" || echo "000")
@@ -245,8 +248,12 @@ update_custom() {
             resp=$(cat /tmp/dyndns_resp 2>/dev/null || true)
             rm -f /tmp/dyndns_resp
 
+            local sent_ips=""
+            [ -n "$IPV4" ] && sent_ips="IPv4=${IPV4}"
+            [ -n "$IPV6" ] && sent_ips="${sent_ips:+${sent_ips}, }IPv6=${IPV6}"
+
             if [ "$http_code" -ge 200 ] 2>/dev/null && [ "$http_code" -lt 300 ] 2>/dev/null && [ -n "$resp" ]; then
-                log "Update ERFOLGREICH für ${domain} (HTTP ${http_code}). Antwort: ${resp}"
+                log "Update ERFOLGREICH für ${domain} [${sent_ips}] (HTTP ${http_code}). Antwort: ${resp}"
             else
                 log_error "Update FEHLGESCHLAGEN für ${domain} (HTTP ${http_code}). Antwort: ${resp}"
                 overall_rc=1

@@ -248,6 +248,93 @@ MQTT_TOPIC_PREFIX=dyndns
 ```
 
 Die Sensoren erscheinen automatisch in Home Assistant unter dem Gerät **DynDNS Updater**. Es ist keine manuelle YAML-Konfiguration in Home Assistant nötig.
+## IPv6 Konfiguration
+
+Standardmäßig hat ein Docker-Container auf einem Bridge-Netzwerk keine IPv6-Konnektivität. Damit der Container seine externe IPv6-Adresse ermitteln und per DynDNS melden kann, muss IPv6 im Docker-Netzwerk aktiviert werden.
+
+### Variante 1: Bridge-Netzwerk mit IPv6 (empfohlen)
+
+Diese Variante ist bereits in der `docker-compose.yml` vorkonfiguriert. Der Container erhält eine eigene IPv6-Adresse aus dem konfigurierten Subnetz.
+
+#### 1) Docker-Daemon IPv6 aktivieren
+
+Erstellen oder bearbeiten Sie `/etc/docker/daemon.json`:
+
+```json
+{
+  "ipv6": true,
+  "fixed-cidr-v6": "fd00::/80",
+  "ip6tables": true,
+  "experimental": true
+}
+```
+
+Danach Docker neu starten:
+
+```bash
+sudo systemctl restart docker
+```
+
+> **Hinweis:** `ip6tables` und `experimental` aktivieren IPv6-NAT im Docker-Daemon (ab Docker Engine 26.0+). Damit kann der Container über die IPv6 des Hosts nach außen kommunizieren, auch wenn das interne Subnetz eine ULA-Adresse (fd00::) verwendet.
+
+#### 2) IPv6-Subnetz konfigurieren
+
+In `docker-compose.yml` ist das IPv6-Subnetz über die Umgebungsvariable `IPV6_SUBNET` konfigurierbar (Standard: `fd00:dead:beef::/48`).
+
+Für **native, global-routbare IPv6** (Container erhält eine öffentliche IPv6):
+
+```bash
+# Beispiel: Ihr Host hat das Subnetz 2001:db8:1::/48
+# Weisen Sie dem Docker-Netzwerk ein Teilsubnetz zu:
+IPV6_SUBNET=2001:db8:1:1::/80 docker compose up -d
+```
+
+Oder setzen Sie die Variable in einer `.env`-Datei:
+
+```bash
+IPV6_SUBNET=2001:db8:1:1::/80
+```
+
+> **Hinweis:** Wenn Sie ein öffentliches IPv6-Subnetz verwenden, muss der Host das Routing für dieses Subnetz an die Docker-Bridge weiterleiten (z. B. über NDP-Proxy oder statische Routen).
+
+#### 3) Prüfen, ob IPv6 funktioniert
+
+```bash
+# IPv6-Adresse des Containers anzeigen
+docker exec apache-reverse-proxy ip -6 addr show
+
+# IPv6-Konnektivität testen
+docker exec apache-reverse-proxy curl -6 -s https://api6.ipify.org
+
+# DynDNS-Update manuell auslösen
+docker exec apache-reverse-proxy /usr/local/bin/dyndns-updater.sh
+```
+
+### Variante 2: Host-Netzwerk (einfachste Methode)
+
+Wenn der Container den Netzwerk-Stack des Hosts direkt verwenden soll, nutzen Sie die mitgelieferte alternative Compose-Datei:
+
+```bash
+docker compose -f docker-compose.host-network.yml up -d
+```
+
+**Vorteile:**
+- IPv6 funktioniert sofort ohne zusätzliche Docker-Konfiguration
+- Container nutzt die globale IPv6-Adresse des Hosts
+
+**Nachteile:**
+- Keine Netzwerkisolierung (Container teilt alle Host-Ports)
+- Port-Mapping (`ports:`) wird ignoriert
+- Container-übergreifende DNS-Auflösung über Docker-Netzwerke nicht verfügbar
+
+### IPv6 Troubleshooting
+
+| Problem | Lösung |
+|---------|--------|
+| `curl -6` schlägt fehl | Docker-Daemon IPv6 prüfen: `docker network inspect proxy-network` → IPv6-Subnetz vorhanden? |
+| Keine globale IPv6 im Container | Öffentliches Subnetz statt ULA konfigurieren oder Host-Netzwerk verwenden |
+| IPv6 extern nicht erreichbar | NDP-Proxy oder statisches Routing auf dem Host einrichten |
+| `DISABLE_IPV6=false` aber kein Update | Log prüfen: `docker logs apache-reverse-proxy \| grep IPv6` |
 
 ### WebSocket Support
 

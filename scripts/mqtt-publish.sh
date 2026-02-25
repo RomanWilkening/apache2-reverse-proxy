@@ -19,19 +19,11 @@ STATUS="${3:-}"
 LAST_SUCCESS="${4:-}"
 
 log() {
-    local msg="[MQTT $(date +'%Y-%m-%d %H:%M:%S')] $*"
-    if [ -w /proc/1/fd/1 ]; then
-        echo "$msg" > /proc/1/fd/1
-    fi
-    echo "$msg"
+    echo "[MQTT $(date +'%Y-%m-%d %H:%M:%S')] $*"
 }
 
 log_error() {
-    local msg="[MQTT $(date +'%Y-%m-%d %H:%M:%S')] ERROR: $*"
-    if [ -w /proc/1/fd/2 ]; then
-        echo "$msg" > /proc/1/fd/2
-    fi
-    echo "$msg" >&2
+    echo "[MQTT $(date +'%Y-%m-%d %H:%M:%S')] ERROR: $*" >&2
 }
 
 if [ ! -f "$CONFIG_FILE" ]; then

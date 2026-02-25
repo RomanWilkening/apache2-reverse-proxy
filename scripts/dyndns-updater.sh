@@ -27,11 +27,21 @@ if [ ! -f "$CONFIG_FILE" ]; then
     exit 0
 fi
 
-# Load configuration (supports simple KEY=VALUE lines)
-# shellcheck disable=SC2046
-set -a
-. "$CONFIG_FILE"
-set +a
+# Load configuration (supports simple KEY=VALUE lines, even unquoted values with spaces)
+while IFS= read -r line || [ -n "$line" ]; do
+    # Skip empty lines and comments
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    # Only process lines that look like KEY=VALUE
+    if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z_0-9]*)=(.*) ]]; then
+        key="${BASH_REMATCH[1]}"
+        val="${BASH_REMATCH[2]}"
+        # Strip surrounding quotes if present
+        if [[ "$val" =~ ^\"(.*)\"$ ]] || [[ "$val" =~ ^\'(.*)\'$ ]]; then
+            val="${BASH_REMATCH[1]}"
+        fi
+        export "$key=$val"
+    fi
+done < "$CONFIG_FILE"
 
 DISABLE_IPV4="${DISABLE_IPV4:-false}"
 DISABLE_IPV6="${DISABLE_IPV6:-false}"

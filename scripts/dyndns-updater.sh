@@ -5,8 +5,21 @@ set -euo pipefail
 
 CONFIG_FILE="/etc/dyndns/config.env"
 
+# Log to Docker stdout so messages appear in 'docker logs'
 log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"
+    local msg="[DynDNS $(date +'%Y-%m-%d %H:%M:%S')] $*"
+    if [ -w /proc/1/fd/1 ]; then
+        echo "$msg" > /proc/1/fd/1
+    fi
+    echo "$msg"
+}
+
+log_error() {
+    local msg="[DynDNS $(date +'%Y-%m-%d %H:%M:%S')] ERROR: $*"
+    if [ -w /proc/1/fd/2 ]; then
+        echo "$msg" > /proc/1/fd/2
+    fi
+    echo "$msg" >&2
 }
 
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -22,17 +35,20 @@ set +a
 
 DISABLE_IPV4="${DISABLE_IPV4:-false}"
 DISABLE_IPV6="${DISABLE_IPV6:-false}"
+CURL_TIMEOUT="${CURL_TIMEOUT:-10}"
 
 discover_ipv4() {
     [ "$DISABLE_IPV4" = "true" ] && return 0
     local endpoints=(
         "https://api.ipify.org"
         "https://ipv4.icanhazip.com"
-        "https://ifconfig.co/ip"
+        "https://checkip.amazonaws.com"
+        "https://ipinfo.io/ip"
+        "https://api.seeip.org"
     )
     local ip
     for url in "${endpoints[@]}"; do
-        ip=$(curl -4 -fsS "$url" | tr -d '\n\r' || true)
+        ip=$(curl -4 -fsS --max-time "$CURL_TIMEOUT" "$url" 2>/dev/null | tr -d '\n\r' || true)
         if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
             IPV4="$ip"
             return 0
@@ -46,11 +62,12 @@ discover_ipv6() {
     local endpoints=(
         "https://api6.ipify.org"
         "https://ipv6.icanhazip.com"
-        "https://ifconfig.co/ip"
+        "https://v6.ident.me"
+        "https://api64.ipify.org"
     )
     local ip
     for url in "${endpoints[@]}"; do
-        ip=$(curl -6 -fsS "$url" | tr -d '\n\r' || true)
+        ip=$(curl -6 -fsS --max-time "$CURL_TIMEOUT" "$url" 2>/dev/null | tr -d '\n\r' || true)
         if [[ "$ip" =~ ^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$ ]]; then
             IPV6="$ip"
             return 0
@@ -60,8 +77,16 @@ discover_ipv6() {
 }
 
 IPV4=""; IPV6=""
-discover_ipv4 || log "Warnung: Konnte externe IPv4 nicht ermitteln."
-discover_ipv6 || log "Warnung: Konnte externe IPv6 nicht ermitteln."
+if discover_ipv4; then
+    [ -n "$IPV4" ] && log "IPv4 ermittelt: $IPV4"
+else
+    log_error "Konnte externe IPv4 nicht ermitteln (alle Endpunkte fehlgeschlagen)."
+fi
+if discover_ipv6; then
+    [ -n "$IPV6" ] && log "IPv6 ermittelt: $IPV6"
+else
+    log_error "Konnte externe IPv6 nicht ermitteln (alle Endpunkte fehlgeschlagen)."
+fi
 
 urldecode() {
     local data="$1"
@@ -183,14 +208,21 @@ update_custom() {
             url=${url//\{PASSWORD\}/$password}
             url=${url//\{password\}/$password}
 
-            local resp
+            local resp http_code
             if [ "$method" = "POST" ]; then
-                resp=$(curl -fsS -X POST "$url" || true)
+                http_code=$(curl -sS -o /tmp/dyndns_resp -w '%{http_code}' --max-time "$CURL_TIMEOUT" -X POST "$url" || echo "000")
             else
-                resp=$(curl -fsS "$url" || true)
+                http_code=$(curl -sS -o /tmp/dyndns_resp -w '%{http_code}' --max-time "$CURL_TIMEOUT" "$url" || echo "000")
             fi
-            log "Custom: Update ausgeführt für ${domain}. Antwort: ${resp}"
-            [ -z "$resp" ] && overall_rc=1
+            resp=$(cat /tmp/dyndns_resp 2>/dev/null || true)
+            rm -f /tmp/dyndns_resp
+
+            if [ "$http_code" -ge 200 ] 2>/dev/null && [ "$http_code" -lt 300 ] 2>/dev/null && [ -n "$resp" ]; then
+                log "Update ERFOLGREICH für ${domain} (HTTP ${http_code}). Antwort: ${resp}"
+            else
+                log_error "Update FEHLGESCHLAGEN für ${domain} (HTTP ${http_code}). Antwort: ${resp}"
+                overall_rc=1
+            fi
         else
             log "Custom: Überspringe Update für ${domain} (keine Änderung erkannt)."
         fi

@@ -58,7 +58,7 @@ if [ -z "$(ls -A /etc/apache2/sites-enabled 2>/dev/null || true)" ]; then
     CustomLog ${APACHE_LOG_DIR}/access.log combined
 
     <Directory /var/www/html>
-        Options Indexes FollowSymLinks
+        Options FollowSymLinks
         AllowOverride All
         Require all granted
     </Directory>
@@ -81,21 +81,21 @@ if [ -f "/etc/dyndns/config.env" ]; then
     if [ "$CRON_SCHEDULE" = "*/5 * * * *" ] || [ "$CRON_SCHEDULE" = "* * * * * */5" ]; then
         # Falls gewünscht: echte 5 Sekunden – implementiere über fünf Einträge mit sleep
         {
-            echo "* * * * * root /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1" 
-            echo "* * * * * root sleep 5; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
-            echo "* * * * * root sleep 10; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
-            echo "* * * * * root sleep 15; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
-            echo "* * * * * root sleep 20; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
-            echo "* * * * * root sleep 25; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
-            echo "* * * * * root sleep 30; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
-            echo "* * * * * root sleep 35; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
-            echo "* * * * * root sleep 40; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
-            echo "* * * * * root sleep 45; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
-            echo "* * * * * root sleep 50; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
-            echo "* * * * * root sleep 55; /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1"
+            echo "* * * * * root /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2" 
+            echo "* * * * * root sleep 5; /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2"
+            echo "* * * * * root sleep 10; /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2"
+            echo "* * * * * root sleep 15; /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2"
+            echo "* * * * * root sleep 20; /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2"
+            echo "* * * * * root sleep 25; /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2"
+            echo "* * * * * root sleep 30; /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2"
+            echo "* * * * * root sleep 35; /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2"
+            echo "* * * * * root sleep 40; /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2"
+            echo "* * * * * root sleep 45; /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2"
+            echo "* * * * * root sleep 50; /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2"
+            echo "* * * * * root sleep 55; /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2"
         } > /etc/cron.d/dyndns-update
     else
-        echo "${CRON_SCHEDULE} root /usr/local/bin/dyndns-updater.sh >> /var/log/dyndns.log 2>&1" > /etc/cron.d/dyndns-update
+        echo "${CRON_SCHEDULE} root /usr/local/bin/dyndns-updater.sh >> /proc/1/fd/1 2>> /proc/1/fd/2" > /etc/cron.d/dyndns-update
     fi
     chmod 0644 /etc/cron.d/dyndns-update
     echo "DynDNS: führe initiales Update aus..."

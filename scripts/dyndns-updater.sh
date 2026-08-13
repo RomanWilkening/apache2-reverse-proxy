@@ -36,8 +36,21 @@ while IFS= read -r line || [ -n "$line" ]; do
     fi
 done < "$CONFIG_FILE"
 
-DISABLE_IPV4="${DISABLE_IPV4:-false}"
-DISABLE_IPV6="${DISABLE_IPV6:-false}"
+# Normalisiert einen Konfigurationswert auf "true"/"false", damit
+# DISABLE_IPV4/DISABLE_IPV6 unabhängig von Groß-/Kleinschreibung oder
+# gängigen Wahrheitswerten (true/1/yes/on) eindeutig funktionieren.
+# "true" bedeutet in jedem Fall: die entsprechende IP wird NICHT gesendet.
+normalize_bool() {
+    local val
+    val=$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]' | xargs)
+    case "$val" in
+        true|1|yes|on) echo "true" ;;
+        *) echo "false" ;;
+    esac
+}
+
+DISABLE_IPV4=$(normalize_bool "${DISABLE_IPV4:-false}")
+DISABLE_IPV6=$(normalize_bool "${DISABLE_IPV6:-false}")
 CURL_TIMEOUT="${CURL_TIMEOUT:-10}"
 
 discover_ipv4() {

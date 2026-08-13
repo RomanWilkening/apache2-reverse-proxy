@@ -200,12 +200,17 @@ CUSTOM_METHOD=GET
 Optionale Einstellungen für IP-Ermittlung und Zeitplan:
 
 ```bash
-# Falls Sie keine IPv6 pflegen möchten
+# Falls Sie keine IPv4 pflegen möchten (weder ermitteln noch übertragen)
+DISABLE_IPV4=false
+
+# Falls Sie keine IPv6 pflegen möchten (weder ermitteln noch übertragen)
 DISABLE_IPV6=false
 
 # Cron-Zeitplan für Updates (Standard: */5 * * * *)
 DYNDNS_CRON=*/5 * * * *
 ```
+
+`DISABLE_IPV4` und `DISABLE_IPV6` können unabhängig voneinander auf `true` gesetzt werden. Beide gleichzeitig zu deaktivieren ist ebenfalls möglich; in diesem Fall werden keine IP-Updates durchgeführt.
 
 ### 4) Starten/Neu starten
 
